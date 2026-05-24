@@ -5,11 +5,13 @@ import SidebarProfile from "../components/SidebarProfile";
 const BASE_URL = "http://127.0.0.1:8000/api/v1";
 
 function formatRupiah(amount) {
+  const numericAmount = typeof amount === "string" ? parseFloat(amount.replace(/[^\d.-]/g, "")) : amount;
+  const safeAmount = isNaN(numericAmount) || numericAmount === null || numericAmount === undefined ? 0 : numericAmount;
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(amount || 0);
+  }).format(safeAmount);
 }
 
 function formatDate(dateStr) {
@@ -37,16 +39,14 @@ const sellerMenus = [
   { name: "Refunds", href: "/refunds" },
   { name: "Wallet", href: "/wallet" },
   { name: "Notifikasi", href: "/notifications" },
+  { name: "Analitik", href: "/analytics" },
   { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
 ];
 
 export default function Wallet() {
   const pathname = useLocation().pathname;
 
-  const [walletData, setWalletData] = useState({
-    balance: 0,
-    balance_formatted: "Rp 0",
-  });
+  const [walletData, setWalletData] = useState({ balance: 0, balance_formatted: "Rp 0" });
   const [incomes, setIncomes] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,121 +58,58 @@ export default function Wallet() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [savedMethod, setSavedMethod] = useState({
-    bank_name: "",
-    bank_account: "",
-    bank_holder: "",
-  });
-  const [methodLoading, setMethodLoading] = useState(false);
+  // Bank accounts dari database
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [addBankForm, setAddBankForm] = useState({ bank_name: "", account_number: "", account_holder: "" });
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [addBankLoading, setAddBankLoading] = useState(false);
 
-  const [withdrawForm, setWithdrawForm] = useState({
-    amount: "",
-    bank_name: "",
-    bank_account: "",
-    bank_holder: "",
-  });
+  const [withdrawForm, setWithdrawForm] = useState({ amount: "", bank_name: "", bank_account: "", bank_holder: "" });
+  const [selectedBankId, setSelectedBankId] = useState(null);
 
-  const [settingsForm, setSettingsForm] = useState({
-    bank_name: "",
-    bank_account: "",
-    bank_holder: "",
-  });
+  // Rekening default untuk tampil di dashboard
+  const defaultBank = bankAccounts.find((b) => b.is_default) || bankAccounts[0] || null;
 
   useEffect(() => {
     const userStr = localStorage.getItem("current_user");
-    let loadedUser = null;
-
     if (userStr) {
-      try {
-        loadedUser = JSON.parse(userStr);
-        setUser(loadedUser);
-      } catch {}
+      try { setUser(JSON.parse(userStr)); } catch {}
     }
-
-    fetchPaymentMethod(loadedUser?.id ?? null);
-  }, []);
-
-  useEffect(() => {
+    fetchBankAccounts();
     fetchWalletData();
   }, []);
 
-  const getPaymentMethodKey = (userId) => {
-    return userId ? `wallet_payment_method_${userId}` : "wallet_payment_method";
-  };
-
-  const fetchPaymentMethod = async (userId) => {
-    setMethodLoading(true);
-
-    const localKey = getPaymentMethodKey(userId);
-
+  const fetchBankAccounts = async () => {
+    setBankLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/wallet/payment-method`, {
-        headers: getAuthHeaders(),
-      });
-
+      const res = await fetch(`${BASE_URL}/bank-accounts/my`, { headers: getAuthHeaders() });
       const json = await res.json();
-
-      if (json.success && json.data) {
-        setSavedMethod({
-          bank_name: json.data.bank_name || "",
-          bank_account: json.data.bank_account || "",
-          bank_holder: json.data.bank_holder || "",
-        });
-      } else {
-        const saved = localStorage.getItem(localKey);
-
-        if (saved) {
-          try {
-            setSavedMethod(JSON.parse(saved));
-          } catch {}
-        } else {
-          setSavedMethod({
-            bank_name: "",
-            bank_account: "",
-            bank_holder: "",
-          });
-        }
+      if (json.success) {
+        setBankAccounts(json.data || []);
+        const def = (json.data || []).find((b) => b.is_default) || (json.data || [])[0];
+        if (def) setSelectedBankId(def.id);
       }
-    } catch {
-      const saved = localStorage.getItem(localKey);
-
-      if (saved) {
-        try {
-          setSavedMethod(JSON.parse(saved));
-        } catch {}
-      } else {
-        setSavedMethod({
-          bank_name: "",
-          bank_account: "",
-          bank_holder: "",
-        });
-      }
+    } catch (err) {
+      console.error("Error fetching bank accounts:", err);
     } finally {
-      setMethodLoading(false);
+      setBankLoading(false);
     }
   };
 
   const fetchWalletData = async () => {
     setLoading(true);
-
     try {
       const [balanceRes, historyRes] = await Promise.all([
         fetch(`${BASE_URL}/wallet/balance`, { headers: getAuthHeaders() }),
         fetch(`${BASE_URL}/wallet/history`, { headers: getAuthHeaders() }),
       ]);
-
       const balanceJson = await balanceRes.json();
       const historyJson = await historyRes.json();
-
-      if (balanceJson.success) {
-        setWalletData(balanceJson.data);
-      }
-
+      if (balanceJson.success) setWalletData(balanceJson.data);
       if (historyJson.success) {
         setIncomes(historyJson.data.incomes || []);
-        setWithdrawals(
-          historyJson.data.withdrawals?.data || historyJson.data.withdrawals || []
-        );
+        setWithdrawals(historyJson.data.withdrawals?.data || historyJson.data.withdrawals || []);
       }
     } catch (err) {
       console.error("Error fetching wallet data:", err);
@@ -187,110 +124,106 @@ export default function Wallet() {
   };
 
   const openWithdrawModal = () => {
+    const def = bankAccounts.find((b) => b.is_default) || bankAccounts[0];
+    setSelectedBankId(def?.id || null);
     setWithdrawForm({
       amount: "",
-      bank_name: savedMethod.bank_name,
-      bank_account: savedMethod.bank_account,
-      bank_holder: savedMethod.bank_holder,
+      bank_name: def?.bank_name || "",
+      bank_account: def?.account_number || "",
+      bank_holder: def?.account_holder || "",
     });
-
     setShowWithdrawModal(true);
   };
 
   const handleWithdraw = async (e) => {
     e.preventDefault();
-
     const amount = Number(withdrawForm.amount);
-
-    if (amount < 10000) {
-      showToast("error", "Minimum penarikan adalah Rp 10.000");
-      return;
-    }
-
-    if (amount > walletData.balance) {
-      showToast("error", "Saldo tidak mencukupi.");
-      return;
-    }
-
+    if (amount < 10000) { showToast("error", "Minimum penarikan adalah Rp 10.000"); return; }
+    if (amount > walletData.balance) { showToast("error", "Saldo tidak mencukupi."); return; }
     setSubmitLoading(true);
-
     try {
+      const body = selectedBankId
+        ? { amount, bank_account_id: selectedBankId }
+        : { amount, bank_name: withdrawForm.bank_name, bank_account: withdrawForm.bank_account, bank_holder: withdrawForm.bank_holder };
+
       const res = await fetch(`${BASE_URL}/wallet/withdraw`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          amount,
-          bank_name: withdrawForm.bank_name,
-          bank_account: withdrawForm.bank_account,
-          bank_holder: withdrawForm.bank_holder,
-        }),
+        body: JSON.stringify(body),
       });
-
       const json = await res.json();
-
       if (json.success) {
         setShowWithdrawModal(false);
-        showToast(
-          "success",
-          json.message || "Penarikan berhasil! Akan diproses 1×24 jam kerja."
-        );
+        showToast("success", json.message || "Penarikan berhasil! Akan diproses 1×24 jam kerja.");
         fetchWalletData();
       } else {
-        const errMsg =
-          json.message ||
-          Object.values(json.errors || {})
-            .flat()
-            .join(", ");
-
+        const errMsg = json.message || Object.values(json.errors || {}).flat().join(", ");
         showToast("error", errMsg || "Gagal melakukan penarikan.");
       }
-    } catch {
-      showToast("error", "Terjadi kesalahan jaringan. Coba lagi.");
-    } finally {
-      setSubmitLoading(false);
-    }
+    } catch { showToast("error", "Terjadi kesalahan jaringan. Coba lagi."); }
+    finally { setSubmitLoading(false); }
+  };
+
+  const handleAddBank = async (e) => {
+    e.preventDefault();
+    setAddBankLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/bank-accounts/my`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ...addBankForm, is_default: bankAccounts.length === 0 }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast("success", "Rekening berhasil ditambahkan!");
+        setAddBankForm({ bank_name: "", account_number: "", account_holder: "" });
+        setShowAddBank(false);
+        fetchBankAccounts();
+      } else {
+        showToast("error", json.message || "Gagal menambah rekening.");
+      }
+    } catch { showToast("error", "Terjadi kesalahan jaringan."); }
+    finally { setAddBankLoading(false); }
+  };
+
+  const handleSetDefault = async (bankId) => {
+    try {
+      const res = await fetch(`${BASE_URL}/bank-accounts/my/${bankId}/set-default`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast("success", "Rekening default berhasil diubah!");
+        setSelectedBankId(bankId);
+        fetchBankAccounts();
+      } else {
+        showToast("error", json.message || "Gagal mengubah default.");
+      }
+    } catch { showToast("error", "Terjadi kesalahan jaringan."); }
+  };
+
+  const handleDeleteBank = async (bankId) => {
+    if (!confirm("Yakin hapus rekening ini?")) return;
+    try {
+      const res = await fetch(`${BASE_URL}/bank-accounts/my/${bankId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast("success", "Rekening berhasil dihapus.");
+        fetchBankAccounts();
+      } else {
+        showToast("error", json.message || "Gagal menghapus rekening.");
+      }
+    } catch { showToast("error", "Terjadi kesalahan jaringan."); }
   };
 
   const openSettingsModal = () => {
-    setSettingsForm({ ...savedMethod });
+    setShowAddBank(false);
+    setAddBankForm({ bank_name: "", account_number: "", account_holder: "" });
     setShowSettingsModal(true);
-  };
-
-  const handleSaveSettings = async (e) => {
-    e.preventDefault();
-
-    setMethodLoading(true);
-
-    const localKey = getPaymentMethodKey(user?.id ?? null);
-
-    try {
-      const res = await fetch(`${BASE_URL}/wallet/payment-method`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(settingsForm),
-      });
-
-      const json = await res.json();
-
-      if (json.success) {
-        setSavedMethod({ ...settingsForm });
-        setShowSettingsModal(false);
-        showToast("success", "Metode pembayaran berhasil disimpan!");
-        localStorage.setItem(localKey, JSON.stringify(settingsForm));
-      } else {
-        localStorage.setItem(localKey, JSON.stringify(settingsForm));
-        setSavedMethod({ ...settingsForm });
-        setShowSettingsModal(false);
-        showToast("success", "Metode pembayaran disimpan secara lokal.");
-      }
-    } catch {
-      localStorage.setItem(localKey, JSON.stringify(settingsForm));
-      setSavedMethod({ ...settingsForm });
-      setShowSettingsModal(false);
-      showToast("success", "Metode pembayaran disimpan secara lokal.");
-    } finally {
-      setMethodLoading(false);
-    }
   };
 
   const withdrawalStatusBadge = (status) => {
@@ -317,7 +250,7 @@ export default function Wallet() {
 
   return (
     <div className="flex min-h-screen w-screen bg-white">
-      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between">
+      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1
             className="text-2xl font-bold text-blue-500"
@@ -364,7 +297,7 @@ export default function Wallet() {
         <SidebarProfile user={user} />
       </div>
 
-      <div className="flex-1 p-6 overflow-y-auto bg-gray-50">
+      <div className="ml-64 flex-1 p-6 overflow-y-auto bg-gray-50">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Wallet Saya</h1>
 
@@ -409,7 +342,9 @@ export default function Wallet() {
           </div>
         </div>
 
-        {savedMethod.bank_name ? (
+        {bankLoading ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 animate-pulse h-16 shadow-sm" />
+        ) : defaultBank ? (
           <div className="bg-white rounded-xl border border-gray-100 p-4 mb-6 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
@@ -417,24 +352,31 @@ export default function Wallet() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-800">
-                  {savedMethod.bank_name}
+                  {defaultBank.bank_name}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {savedMethod.bank_account} · a.n {savedMethod.bank_holder}
+                  {defaultBank.account_number} · a.n {defaultBank.account_holder}
                 </p>
               </div>
             </div>
-
-            <span className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-md font-medium border border-green-100">
-              Default
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-md font-medium border border-green-100">
+                Default
+              </span>
+              <button
+                onClick={openSettingsModal}
+                className="text-xs px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-200 hover:bg-gray-100 transition"
+              >
+                Kelola
+              </button>
+            </div>
           </div>
         ) : (
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 flex items-center gap-3">
             <p className="text-sm text-orange-700">
-              Belum ada metode pembayaran tersimpan.{" "}
+              Belum ada rekening bank tersimpan.{" "}
               <button onClick={openSettingsModal} className="underline font-semibold">
-                Atur sekarang
+                Tambah sekarang
               </button>
             </p>
           </div>
@@ -552,7 +494,7 @@ export default function Wallet() {
       {showWithdrawModal && (
         <ModalOverlay onClose={() => setShowWithdrawModal(false)}>
           <h2 className="text-lg font-bold text-gray-800 mb-1">Cairkan Dana</h2>
-          <p className="text-sm text-gray-500 mb-5">
+          <p className="text-sm text-gray-500 mb-4">
             Saldo tersedia:{" "}
             <span className="font-semibold text-blue-600">
               {walletData.balance_formatted || formatRupiah(walletData.balance)}
@@ -567,43 +509,58 @@ export default function Wallet() {
               max={walletData.balance}
               placeholder="Minimum Rp 10.000"
               value={withdrawForm.amount}
-              onChange={(e) =>
-                setWithdrawForm({ ...withdrawForm, amount: e.target.value })
-              }
+              onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
             />
 
-            <InputField
-              label="Nama Bank / E-Wallet"
-              placeholder="cth: BCA, GoPay, OVO, Dana"
-              value={withdrawForm.bank_name}
-              onChange={(e) =>
-                setWithdrawForm({ ...withdrawForm, bank_name: e.target.value })
-              }
-            />
-
-            <InputField
-              label="Nomor Rekening / No. HP"
-              placeholder="cth: 081234567890"
-              value={withdrawForm.bank_account}
-              onChange={(e) =>
-                setWithdrawForm({
-                  ...withdrawForm,
-                  bank_account: e.target.value,
-                })
-              }
-            />
-
-            <InputField
-              label="Atas Nama"
-              placeholder="Nama pemilik rekening"
-              value={withdrawForm.bank_holder}
-              onChange={(e) =>
-                setWithdrawForm({
-                  ...withdrawForm,
-                  bank_holder: e.target.value,
-                })
-              }
-            />
+            {bankAccounts.length > 0 ? (
+              <div>
+                <label className="block text-xs font-semibold text-gray-900 mb-2">
+                  Pilih Rekening Tujuan
+                </label>
+                <div className="space-y-2 max-h-44 overflow-y-auto">
+                  {bankAccounts.map((bank) => (
+                    <label
+                      key={bank.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                        selectedBankId === bank.id
+                          ? "border-blue-400 bg-blue-50"
+                          : "border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="bank_select"
+                        checked={selectedBankId === bank.id}
+                        onChange={() => setSelectedBankId(bank.id)}
+                        className="accent-blue-500"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{bank.bank_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {bank.account_number} · a.n {bank.account_holder}
+                          {bank.is_default && (
+                            <span className="ml-1 text-green-600 font-medium">(Default)</span>
+                          )}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <p className="text-xs text-orange-700">
+                  Belum ada rekening tersimpan.{" "}
+                  <button
+                    type="button"
+                    onClick={() => { setShowWithdrawModal(false); openSettingsModal(); }}
+                    className="underline font-semibold"
+                  >
+                    Tambah rekening dulu
+                  </button>
+                </p>
+              </div>
+            )}
 
             <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
               ⏱ Proses pencairan membutuhkan 1×24 jam kerja.
@@ -617,10 +574,9 @@ export default function Wallet() {
               >
                 Batal
               </button>
-
               <button
                 type="submit"
-                disabled={submitLoading}
+                disabled={submitLoading || (!selectedBankId && bankAccounts.length > 0)}
                 className="flex-1 py-2.5 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-60 text-yellow-900 text-sm font-bold rounded-xl transition shadow"
               >
                 {submitLoading ? "Memproses..." : "Cairkan Sekarang"}
@@ -632,90 +588,135 @@ export default function Wallet() {
 
       {showSettingsModal && (
         <ModalOverlay onClose={() => setShowSettingsModal(false)}>
-          <h2 className="text-lg font-bold text-gray-800 mb-1">
-            Atur Metode Pembayaran
-          </h2>
-          <p className="text-sm text-gray-500 mb-5">
-            Data ini akan otomatis mengisi form pencairan dana.
+          <h2 className="text-lg font-bold text-gray-800 mb-1">Kelola Rekening Bank</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Rekening ini digunakan untuk pencairan dana wallet.
           </p>
 
-          <form onSubmit={handleSaveSettings} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-900 mb-1">
-                Nama Bank / E-Wallet
-              </label>
-
-              <select
-                value={settingsForm.bank_name}
-                onChange={(e) =>
-                  setSettingsForm({
-                    ...settingsForm,
-                    bank_name: e.target.value,
-                  })
-                }
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-              >
-                <option value="">-- Pilih Metode --</option>
-                <optgroup label="M-Banking">
-                  <option value="BCA">BCA</option>
-                  <option value="BRI">BRI</option>
-                  <option value="BNI">BNI</option>
-                  <option value="Mandiri">Mandiri</option>
-                  <option value="BSI">BSI</option>
-                  <option value="CIMB Niaga">CIMB Niaga</option>
-                  <option value="Permata Bank">Permata Bank</option>
-                </optgroup>
-                <optgroup label="E-Wallet">
-                  <option value="GoPay">GoPay</option>
-                  <option value="OVO">OVO</option>
-                  <option value="Dana">Dana</option>
-                  <option value="ShopeePay">ShopeePay</option>
-                  <option value="LinkAja">LinkAja</option>
-                </optgroup>
-              </select>
+          {/* Daftar rekening dari database */}
+          {bankLoading ? (
+            <div className="space-y-2 mb-4">
+              {[1,2].map(i => <div key={i} className="h-14 bg-gray-100 animate-pulse rounded-lg" />)}
             </div>
-
-            <InputField
-              label="Nomor Rekening / No. HP"
-              placeholder="cth: 081234567890 atau 0123456789"
-              value={settingsForm.bank_account}
-              onChange={(e) =>
-                setSettingsForm({
-                  ...settingsForm,
-                  bank_account: e.target.value,
-                })
-              }
-            />
-
-            <InputField
-              label="Atas Nama"
-              placeholder="Nama sesuai rekening/e-wallet"
-              value={settingsForm.bank_holder}
-              onChange={(e) =>
-                setSettingsForm({
-                  ...settingsForm,
-                  bank_holder: e.target.value,
-                })
-              }
-            />
-
-            <div className="flex gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowSettingsModal(false)}
-                className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition"
-              >
-                Batal
-              </button>
-
-              <button
-                type="submit"
-                className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-xl transition shadow"
-              >
-                Simpan
-              </button>
+          ) : bankAccounts.length > 0 ? (
+            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+              {bankAccounts.map((bank) => (
+                <div
+                  key={bank.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    bank.is_default ? "border-blue-300 bg-blue-50" : "border-gray-200"
+                  }`}
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">{bank.bank_name}</p>
+                    <p className="text-xs text-gray-500">
+                      {bank.account_number} · a.n {bank.account_holder}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {bank.is_default ? (
+                      <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded font-medium">Default</span>
+                    ) : (
+                      <button
+                        onClick={() => handleSetDefault(bank.id)}
+                        className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-blue-100 hover:text-blue-700 transition"
+                      >
+                        Set Default
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteBank(bank.id)}
+                      className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </form>
+          ) : (
+            <div className="text-center py-4 text-gray-400 text-sm mb-4">
+              Belum ada rekening tersimpan.
+            </div>
+          )}
+
+          {/* Tambah rekening baru */}
+          {!showAddBank ? (
+            <button
+              onClick={() => setShowAddBank(true)}
+              className="w-full py-2.5 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-xl hover:border-blue-400 hover:text-blue-500 transition"
+            >
+              + Tambah Rekening Baru
+            </button>
+          ) : (
+            <form onSubmit={handleAddBank} className="space-y-3 mt-2 border border-gray-200 rounded-xl p-4 bg-gray-50">
+              <p className="text-xs font-semibold text-gray-700">Tambah Rekening Baru</p>
+              <div>
+                <label className="block text-xs font-semibold text-gray-900 mb-1">Nama Bank / E-Wallet</label>
+                <select
+                  value={addBankForm.bank_name}
+                  onChange={(e) => setAddBankForm({ ...addBankForm, bank_name: e.target.value })}
+                  required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                >
+                  <option value="">-- Pilih --</option>
+                  <optgroup label="M-Banking">
+                    <option value="BCA">BCA</option>
+                    <option value="BRI">BRI</option>
+                    <option value="BNI">BNI</option>
+                    <option value="Mandiri">Mandiri</option>
+                    <option value="BSI">BSI</option>
+                    <option value="CIMB Niaga">CIMB Niaga</option>
+                    <option value="Permata Bank">Permata Bank</option>
+                  </optgroup>
+                  <optgroup label="E-Wallet">
+                    <option value="GoPay">GoPay</option>
+                    <option value="OVO">OVO</option>
+                    <option value="Dana">Dana</option>
+                    <option value="ShopeePay">ShopeePay</option>
+                    <option value="LinkAja">LinkAja</option>
+                  </optgroup>
+                </select>
+              </div>
+              <InputField
+                label="Nomor Rekening / No. HP"
+                placeholder="cth: 081234567890"
+                value={addBankForm.account_number}
+                onChange={(e) => setAddBankForm({ ...addBankForm, account_number: e.target.value })}
+              />
+              <InputField
+                label="Atas Nama"
+                placeholder="Nama sesuai rekening"
+                value={addBankForm.account_holder}
+                onChange={(e) => setAddBankForm({ ...addBankForm, account_holder: e.target.value })}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddBank(false)}
+                  className="flex-1 py-2 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-100 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={addBankLoading}
+                  className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold rounded-lg transition disabled:opacity-60"
+                >
+                  {addBankLoading ? "Menyimpan..." : "Simpan"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setShowSettingsModal(false)}
+              className="py-2 px-4 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition"
+            >
+              Tutup
+            </button>
+          </div>
         </ModalOverlay>
       )}
 

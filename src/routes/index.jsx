@@ -8,9 +8,9 @@ import Transactions from "../pages/Transactions";
 import Wallet from "../pages/Wallet";
 import Refunds from "../pages/Refunds";
 import Notifications from "../pages/Notifications";
+import Analytics from "../pages/Analytics";
 import AuthCallback from "../pages/AuthCallback";
 import AuthReceiver from "../pages/AuthReceiver";
-import NotFound from "../pages/NotFound";
 
 function ExternalRedirect({ to }) {
   window.location.href = to;
@@ -107,8 +107,14 @@ export default function AppRoutes() {
           }
         />
 
-        {/* 404 Not Found */}
-        <Route path="*" element={<NotFound />} />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Analytics />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

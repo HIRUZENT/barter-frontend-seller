@@ -52,6 +52,7 @@ const sellerMenus = [
   { name: "Refunds", href: "/refunds" },
   { name: "Wallet", href: "/wallet" },
   { name: "Notifikasi", href: "/notifications" },
+  { name: "Analitik", href: "/analytics" },
   { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
 ];
 

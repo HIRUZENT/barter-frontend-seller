@@ -11,6 +11,7 @@ const sellerMenus = [
   { name: "Refunds", href: "/refunds" },
   { name: "Wallet", href: "/wallet" },
   { name: "Notifikasi", href: "/notifications" },
+  { name: "Analitik", href: "/analytics" },
   { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
 ];
 
@@ -33,11 +34,13 @@ function getAuthHeaders() {
 }
 
 function formatRupiah(amount) {
+  const numericAmount = typeof amount === "string" ? parseFloat(amount.replace(/[^\d.-]/g, "")) : amount;
+  const safeAmount = isNaN(numericAmount) || numericAmount === null || numericAmount === undefined ? 0 : numericAmount;
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     maximumFractionDigits: 0,
-  }).format(amount || 0);
+  }).format(safeAmount);
 }
 
 function formatDate(iso) {
@@ -337,7 +340,7 @@ export default function Refunds() {
         </div>
       )}
 
-      <div className="w-64 bg-white border-r p-4 hidden md:flex flex-col justify-between">
+      <div className="w-64 bg-white border-r p-4 hidden md:flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1
             className="text-2xl font-bold text-blue-500"
@@ -386,7 +389,7 @@ export default function Refunds() {
         </div>
       </div>
 
-      <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-gray-50">
+      <div className="ml-64 flex-1 p-4 md:p-6 overflow-y-auto bg-gray-50">
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">

@@ -12,6 +12,7 @@ const sellerMenus = [
   { name: "Refunds", href: "/refunds" },
   { name: "Wallet", href: "/wallet" },
   { name: "Notifikasi", href: "/notifications" },
+  { name: "Analitik", href: "/analytics" },
   { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
 ];
 
@@ -194,7 +195,9 @@ export default function Dashboard() {
   };
 
   const formatRupiah = (value) => {
-    return Number(value || 0).toLocaleString("id-ID");
+    const numericAmount = typeof value === "string" ? parseFloat(value.replace(/[^\d.-]/g, "")) : value;
+    const safeAmount = isNaN(numericAmount) || numericAmount === null || numericAmount === undefined ? 0 : numericAmount;
+    return safeAmount.toLocaleString("id-ID");
   };
 
   const formatDate = (date) => {
@@ -235,7 +238,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen w-screen bg-white">
-      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between">
+      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1
             className="text-2xl font-bold text-blue-500"
@@ -267,11 +270,10 @@ export default function Dashboard() {
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    isActive
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition ${isActive
                       ? "bg-blue-100 text-blue-600"
                       : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  }`}
+                    }`}
                 >
                   <span>{item.name}</span>
                 </Link>
@@ -283,7 +285,7 @@ export default function Dashboard() {
         <SidebarProfile user={user} />
       </div>
 
-      <div className="flex-1 p-6 overflow-y-auto bg-gray-50">
+      <div className="ml-64 flex-1 p-6 overflow-y-auto bg-gray-50">
         <h1 className="text-2xl font-bold text-primary mb-6">
           Dashboard Penjual
         </h1>
@@ -380,11 +382,10 @@ export default function Dashboard() {
                     Rp {formatRupiah(transaction.final_amount)}
                   </p>
                   <p
-                    className={`text-xs ${
-                      transaction.status === "completed"
+                    className={`text-xs ${transaction.status === "completed"
                         ? "text-green-600"
                         : "text-yellow-600"
-                    }`}
+                      }`}
                   >
                     {transaction.status}
                   </p>

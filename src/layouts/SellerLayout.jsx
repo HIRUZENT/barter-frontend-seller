@@ -9,6 +9,7 @@ const menu = [
     { name: "Iklan", path: "/ads" },
     { name: "Refund", path: "/refunds" },
     { name: "Notifikasi", path: "/notifications" },
+    { name: "Analitik", path: "/analytics" },
 ];
 
 export default function SellerLayout() {

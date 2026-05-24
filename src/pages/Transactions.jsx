@@ -11,6 +11,7 @@ const sellerMenus = [
   { name: "Refunds", href: "/refunds" },
   { name: "Wallet", href: "/wallet" },
   { name: "Notifikasi", href: "/notifications" },
+  { name: "Analitik", href: "/analytics" },
   { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
 ];
 
@@ -24,11 +25,13 @@ function getAuthHeaders() {
 }
 
 function formatRupiah(amount) {
+  const numericAmount = typeof amount === "string" ? parseFloat(amount.replace(/[^\d.-]/g, "")) : amount;
+  const safeAmount = isNaN(numericAmount) || numericAmount === null || numericAmount === undefined ? 0 : numericAmount;
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(amount || 0);
+  }).format(safeAmount);
 }
 
 function getStatusColor(status) {
@@ -787,7 +790,12 @@ export default function Transactions() {
 
   const totalPendapatan = transactions
     .filter((t) => t.status === "completed" || t.status === "cod_completed")
-    .reduce((sum, t) => sum + (t.total_price ?? 0), 0);
+    .reduce((sum, t) => {
+      const amountVal = t.final_amount ?? t.total_price ?? 0;
+      const numericAmount = typeof amountVal === "string" ? parseFloat(amountVal.replace(/[^\d.-]/g, "")) : amountVal;
+      const safeAmount = isNaN(numericAmount) || numericAmount === null || numericAmount === undefined ? 0 : numericAmount;
+      return sum + safeAmount;
+    }, 0);
 
   const filteredTransactions = transactions.filter((t) => {
     if (filter === "all") return true;
@@ -802,7 +810,7 @@ export default function Transactions() {
 
   return (
     <div className="flex min-h-screen w-screen bg-white">
-      <div className="w-64 bg-white border-r p-4 hidden md:flex flex-col justify-between">
+      <div className="w-64 bg-white border-r p-4 hidden md:flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1
             className="text-2xl font-bold text-blue-500"
@@ -849,7 +857,7 @@ export default function Transactions() {
         <SidebarProfile user={user} />
       </div>
 
-      <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-gray-50">
+      <div className="ml-64 flex-1 p-4 md:p-6 overflow-y-auto bg-gray-50">
         <div className="mb-6 md:mb-8">
           <div className="flex justify-between items-end mb-4">
             <div>

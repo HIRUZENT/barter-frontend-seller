@@ -43,6 +43,7 @@ export default function Products() {
     { name: "Refunds", href: "/refunds" },
     { name: "Wallet", href: "/wallet" },
     { name: "Notifikasi", href: "/notifications" },
+    { name: "Analitik", href: "/analytics" },
     { name: "Pindah ke halaman pembeli", href: "http://localhost:3000/" },
   ];
 
@@ -210,9 +211,12 @@ export default function Products() {
     setModalOpen(true);
   };
 
+  const [originalImages, setOriginalImages] = useState([]);
+
   const handleEditProduct = (product) => {
     setEditingProduct(product);
     setExistingImages(product.images || []);
+    setOriginalImages(product.images || []);
 
     const fallbackLocation =
       product.location ||
@@ -286,6 +290,11 @@ export default function Products() {
 
     const data = new FormData();
 
+    // Laravel method spoofing: PUT tidak support file upload, gunakan POST + _method
+    if (editingProduct) {
+      data.append("_method", "PUT");
+    }
+
     data.append("title", formData.title);
     data.append("description", formData.description);
     data.append("price", formData.price);
@@ -312,6 +321,17 @@ export default function Products() {
     if (formData.latitude) data.append("latitude", formData.latitude);
     if (formData.longitude) data.append("longitude", formData.longitude);
 
+    // Kirim ID gambar yang dihapus user dari existing images
+    if (editingProduct) {
+      const existingIds = new Set(existingImages.map((img) => img.id));
+      const deletedImageIds = originalImages
+        .filter((img) => !existingIds.has(img.id))
+        .map((img) => img.id);
+      deletedImageIds.forEach((id, index) => {
+        data.append(`delete_image_ids[${index}]`, id);
+      });
+    }
+
     formData.images.forEach((file, index) => {
       data.append(`images[${index}]`, file);
     });
@@ -325,7 +345,8 @@ export default function Products() {
         ? `${BASE_URL}/products/${editingProduct.id}`
         : `${BASE_URL}/products`;
 
-      const method = editingProduct ? "PUT" : "POST";
+      // Selalu POST (edit pakai method spoofing _method=PUT di FormData)
+      const method = "POST";
 
       const res = await fetch(url, {
         method,
@@ -381,7 +402,7 @@ export default function Products() {
 
   return (
     <div className="flex min-h-screen w-screen bg-white">
-      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between">
+      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1
             className="text-2xl font-bold text-blue-500"
@@ -428,7 +449,7 @@ export default function Products() {
         <SidebarProfile user={user} />
       </div>
 
-      <div className="flex-1 p-6 overflow-y-auto bg-gray-50">
+      <div className="ml-64 flex-1 p-6 overflow-y-auto bg-gray-50">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-primary">Kelola Produk</h1>
 
