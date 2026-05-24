@@ -172,7 +172,6 @@ export default function Analytics() {
 
   return (
     <div className="flex min-h-screen w-full bg-white">
-      {/* ── Sidebar (SAMA persis dengan Dashboard) ── */}
       <div className="w-64 bg-white border-r p-4 flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
           <h1

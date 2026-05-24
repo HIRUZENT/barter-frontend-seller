@@ -84,8 +84,8 @@ export default function Notifications() {
         const notificationsData = Array.isArray(payload)
           ? payload
           : Array.isArray(payload.notifications)
-          ? payload.notifications
-          : [];
+            ? payload.notifications
+            : [];
 
         setNotifications(notificationsData.map(mapNotificationResponse));
       } catch (error) {
@@ -126,9 +126,9 @@ export default function Notifications() {
           prev.map((item) =>
             item.id === id
               ? {
-                  ...item,
-                  unread: false,
-                }
+                ...item,
+                unread: false,
+              }
               : item
           )
         );
@@ -143,9 +143,9 @@ export default function Notifications() {
           prev.map((item) =>
             item.id === id
               ? {
-                  ...item,
-                  unread: true,
-                }
+                ...item,
+                unread: true,
+              }
               : item
           )
         );
@@ -192,22 +192,28 @@ export default function Notifications() {
 
   return (
     <div className="flex min-h-screen w-screen bg-white font-sans">
-      <div className="w-64 bg-white border-r p-4 hidden md:flex flex-col justify-between fixed h-screen z-10">
+      <div className="w-64 bg-white border-r p-4 flex flex-col justify-between fixed h-screen overflow-y-auto z-10">
         <div>
-          <h1 className="text-2xl font-bold text-blue-500 tracking-wide">
-            RatheR
+          <h1
+            className="text-2xl font-bold text-blue-500"
+            style={{ letterSpacing: "2px" }}
+          >
+            Rather&apos;s
           </h1>
 
-          <nav className="mt-8 space-y-2">
-            {sellerMenus.map((item) => {
-              const external = item.href.startsWith("http");
+          <p className="text-sm text-gray-500 mb-4">Seller Dashboard</p>
 
-              if (external) {
+          <nav className="mt-6 space-y-2">
+            {sellerMenus.map((item) => {
+              const isExternal = item.href.startsWith("http");
+              const isActive = pathname === item.href;
+
+              if (isExternal) {
                 return (
                   <a
                     key={item.name}
                     href={item.href}
-                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition text-gray-600 hover:bg-gray-100 hover:text-gray-900"
                   >
                     <span>{item.name}</span>
                   </a>
@@ -218,19 +224,12 @@ export default function Notifications() {
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition ${
-                    isActive(item.href)
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition ${isActive
+                      ? "bg-blue-100 text-blue-600"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
                 >
                   <span>{item.name}</span>
-
-                  {item.name === "Notifikasi" && unreadCount > 0 && (
-                    <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                      {unreadCount}
-                    </span>
-                  )}
                 </Link>
               );
             })}
@@ -283,11 +282,10 @@ export default function Notifications() {
                 <div
                   key={item.id}
                   onClick={() => handleClickNotification(item)}
-                  className={`cursor-pointer rounded-3xl border px-6 py-5 shadow-sm transition ${
-                    item.unread
+                  className={`cursor-pointer rounded-3xl border px-6 py-5 shadow-sm transition ${item.unread
                       ? "border-blue-300 bg-blue-50"
                       : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
