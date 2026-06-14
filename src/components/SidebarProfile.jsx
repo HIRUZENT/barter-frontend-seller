@@ -27,7 +27,7 @@ export default function SidebarProfile({ user }) {
               </p>
 
               <Link
-                to="/profile"
+                to="http://localhost:3000/profile"
                 className="text-xs text-blue-600 cursor-pointer mt-0.5 hover:underline"
               >
                 Lihat Profil
